@@ -1,0 +1,9 @@
+{
+  "name": "Docker Desktop",
+  "slug": "docker-desktop/darwin",
+  "unique_identifier": "com.electron.dockerdesktop",
+  "token": "docker-desktop",
+  "installer_format": "dmg",
+  "default_categories": ["Developer tools"],
+  "install_script_path": "ee/maintained-apps/inputs/homebrew/scripts/docker_desktop_install.sh"
+}

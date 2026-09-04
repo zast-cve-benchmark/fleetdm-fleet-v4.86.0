@@ -1,0 +1,121 @@
+import { http, HttpResponse } from "msw";
+
+import {
+  createMockDeviceSoftwareResponse,
+  createMockSetupSoftwareStatusesResponse,
+} from "__mocks__/deviceUserMock";
+import createMockHost from "__mocks__/hostMock";
+import createMockLicense from "__mocks__/licenseMock";
+import createMockMacAdmins from "__mocks__/macAdminsMock";
+import { createMockHostCertificate } from "__mocks__/certificatesMock";
+import { createMockAppleMdmCommandResult } from "__mocks__/commandMock";
+
+import { baseUrl } from "test/test-utils";
+import { IDUPDetails } from "interfaces/host";
+import {
+  IGetDeviceSoftwareResponse,
+  IGetSetupExperienceStatusesResponse,
+} from "services/entities/device_user";
+import { IGetHostCertificatesResponse } from "services/entities/hosts";
+
+const createDefaultDeviceResponse = (): IDUPDetails => ({
+  host: { ...createMockHost(), dep_assigned_to_fleet: false },
+  license: createMockLicense(),
+  org_logo_url: "",
+  org_logo_url_light_background: "",
+  org_logo_url_dark_mode: "",
+  org_logo_url_light_mode: "",
+  org_contact_url: "",
+  self_service: false,
+  global_config: {
+    mdm: {
+      enabled_and_configured: false,
+      require_all_software_macos: false,
+    },
+    features: {
+      enable_software_inventory: false,
+      enable_conditional_access: false,
+      enable_conditional_access_bypass: false,
+    },
+  },
+});
+
+export const defaultDeviceHandler = http.get(baseUrl("/device/:token"), () =>
+  HttpResponse.json(createDefaultDeviceResponse())
+);
+
+export const customDeviceHandler = (overrides?: Partial<IDUPDetails>) =>
+  http.get(baseUrl("/device/:token"), () =>
+    HttpResponse.json({ ...createDefaultDeviceResponse(), ...overrides })
+  );
+
+export const defaultMacAdminsHandler = http.get(
+  baseUrl("/device/:token/macadmins"),
+  () => {
+    return HttpResponse.json({
+      macadmins: createMockMacAdmins(),
+    });
+  }
+);
+
+export const customDeviceSoftwareHandler = (
+  overrides?: Partial<IGetDeviceSoftwareResponse>
+) =>
+  http.get(baseUrl("/device/:token/software"), () => {
+    return HttpResponse.json(createMockDeviceSoftwareResponse(overrides));
+  });
+
+export const defaultDeviceCertificatesHandler = http.get(
+  baseUrl("/device/:token/certificates"),
+  () => {
+    return HttpResponse.json<IGetHostCertificatesResponse>({
+      certificates: [createMockHostCertificate()],
+      meta: {
+        has_next_results: false,
+        has_previous_results: false,
+      },
+      count: 1,
+    });
+  }
+);
+
+export const deviceSetupExperienceHandler = (
+  overrides?: Partial<IGetSetupExperienceStatusesResponse>
+) =>
+  http.post(baseUrl("/device/:token/setup_experience/status"), () => {
+    return HttpResponse.json(
+      createMockSetupSoftwareStatusesResponse(overrides)
+    );
+  });
+
+export const emptySetupExperienceHandler = deviceSetupExperienceHandler({
+  setup_experience_results: { software: [], scripts: [] },
+});
+
+export const getDeviceVppCommandResultHandler = http.get(
+  `/device/:token/software/commands/:uuid/results`,
+  ({ params }) => {
+    const { uuid } = params;
+
+    // Map UUIDs to status
+    const statusMap = {
+      "notnow-uuid": "NotNow",
+      "acknowledged-uuid": "Acknowledged",
+      "uuid-failed": "Failed",
+    };
+    const status =
+      statusMap[uuid as "notnow-uuid" | "acknowledged-uuid" | "uuid-failed"] ||
+      "Acknowledged";
+
+    const mdmCommand = createMockAppleMdmCommandResult({
+      command_uuid: uuid as string,
+      status,
+      payload: btoa(`payload for ${uuid}`),
+      result: btoa(`result for ${uuid}`),
+    });
+
+    return HttpResponse.json({
+      results: [mdmCommand],
+    });
+  }
+);

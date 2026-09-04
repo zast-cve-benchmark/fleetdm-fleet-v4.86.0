@@ -1,0 +1,7 @@
+.windows-mdm-page {
+  @include vertical-page-layout;
+
+  form {
+    @include vertical-form-layout;
+  }
+}

@@ -1,0 +1,15 @@
+.software-os-details-page {
+  @include vertical-page-layout;
+
+  .team-dropdown-wrapper {
+    @include normalize-team-header;
+  }
+
+  h2 {
+    font-size: $small;
+  }
+
+  &__vulnerabilities-section {
+    @include vertical-card-layout;
+  }
+}
