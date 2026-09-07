@@ -1,0 +1,254 @@
+import React, { useCallback } from "react";
+import { InjectedRouter } from "react-router";
+
+import { IGetHostSoftwareResponse } from "services/entities/hosts";
+import { IGetDeviceSoftwareResponse } from "services/entities/device_user";
+import { getNextLocationPath } from "utilities/helpers";
+import { QueryParams } from "utilities/url";
+
+import {
+  buildSoftwareVulnFiltersQueryParams,
+  getVulnFilterRenderDetails,
+  ISoftwareVulnFiltersParams,
+} from "pages/SoftwarePage/SoftwareInventory/SoftwareInventoryTable/helpers";
+
+import {
+  HostPlatform,
+  PLATFORM_DISPLAY_NAMES,
+  isVulnUnsupportedPlatform,
+} from "interfaces/platform";
+
+import TableContainer from "components/TableContainer";
+import { ITableQueryData } from "components/TableContainer/TableContainer";
+import TooltipWrapper from "components/TooltipWrapper";
+import Button from "components/buttons/Button";
+import Icon from "components/Icon";
+
+import EmptyState from "components/EmptyState";
+import EmptySoftwareTable from "pages/SoftwarePage/components/tables/EmptySoftwareTable";
+import TableCount from "components/TableContainer/TableCount";
+import { VulnsNotSupported } from "pages/SoftwarePage/components/tables/SoftwareVulnerabilitiesTable/SoftwareVulnerabilitiesTable";
+import { Row } from "react-table";
+import { IHostSoftware } from "interfaces/software";
+
+const DEFAULT_PAGE_SIZE = 20;
+
+const baseClass = "host-software-table";
+
+interface IHostSoftwareRowProps extends Row {
+  original: IHostSoftware;
+}
+
+interface IEmptyComponentProps {
+  hasVulnFilters: boolean;
+  platform: HostPlatform;
+  searchQuery: string;
+}
+
+const EmptyComponent = React.memo(
+  ({ hasVulnFilters, platform, searchQuery }: IEmptyComponentProps) => {
+    const vulnFilterAndNotSupported =
+      hasVulnFilters && isVulnUnsupportedPlatform(platform);
+    return vulnFilterAndNotSupported ? (
+      <VulnsNotSupported platformText={PLATFORM_DISPLAY_NAMES[platform]} />
+    ) : (
+      <EmptySoftwareTable
+        noSearchQuery={searchQuery === ""}
+        platform={platform}
+      />
+    );
+  }
+);
+
+interface IHostSoftwareTableProps {
+  tableConfig: any; // TODO: type
+  data?: IGetHostSoftwareResponse | IGetDeviceSoftwareResponse;
+  platform: HostPlatform;
+  isLoading: boolean;
+  router: InjectedRouter;
+  sortHeader: string;
+  sortDirection: "asc" | "desc";
+  searchQuery: string;
+  page: number;
+  pagePath: string;
+  vulnFilters: ISoftwareVulnFiltersParams;
+  teamId?: number;
+  onAddFiltersClick: () => void;
+  isMyDevicePage?: boolean;
+  onShowInventoryVersions: (software: IHostSoftware) => void;
+}
+
+const HostSoftwareTable = ({
+  tableConfig,
+  data,
+  platform,
+  isLoading,
+  router,
+  sortHeader,
+  sortDirection,
+  searchQuery,
+  page,
+  pagePath,
+  vulnFilters,
+  teamId,
+  onAddFiltersClick,
+  isMyDevicePage,
+  onShowInventoryVersions,
+}: IHostSoftwareTableProps) => {
+  const determineQueryParamChange = useCallback(
+    (newTableQuery: ITableQueryData) => {
+      const changedEntry = Object.entries(newTableQuery).find(([key, val]) => {
+        switch (key) {
+          case "searchQuery":
+            return val !== searchQuery;
+          case "sortDirection":
+            return val !== sortDirection;
+          case "sortHeader":
+            return val !== sortHeader;
+          case "pageIndex":
+            return val !== page;
+          default:
+            return false;
+        }
+      });
+      return changedEntry?.[0] ?? "";
+    },
+    [page, searchQuery, sortDirection, sortHeader]
+  );
+
+  const generateNewQueryParams = useCallback(
+    (newTableQuery: ITableQueryData, changedParam: string) => {
+      const newQueryParam: QueryParams = {
+        query: newTableQuery.searchQuery,
+        order_direction: newTableQuery.sortDirection,
+        order_key: newTableQuery.sortHeader,
+        page: changedParam === "pageIndex" ? newTableQuery.pageIndex : 0,
+        fleet_id: teamId,
+        ...buildSoftwareVulnFiltersQueryParams(vulnFilters),
+      };
+      return newQueryParam;
+    },
+    [vulnFilters]
+  );
+
+  // TODO: Look into useDebounceCallback with dependencies
+  const onQueryChange = useCallback(
+    async (newTableQuery: ITableQueryData) => {
+      // we want to determine which query param has changed in order to
+      // reset the page index to 0 if any other param has changed.
+      const changedParam = determineQueryParamChange(newTableQuery);
+
+      // if nothing has changed, don't update the route. this can happen when
+      // this handler is called on the inital render. Can also happen when
+      // the filter dropdown is changed. That is handled on the onChange handler
+      // for the dropdown.
+      if (changedParam === "") return;
+
+      const newRoute = getNextLocationPath({
+        pathPrefix: pagePath,
+        routeTemplate: "",
+        queryParams: generateNewQueryParams(newTableQuery, changedParam),
+      });
+
+      router.replace(newRoute);
+    },
+    [determineQueryParamChange, pagePath, generateNewQueryParams, router]
+  );
+
+  const count = data?.count || data?.software?.length || 0;
+  const isSoftwareNotDetected = count === 0 && searchQuery === "";
+
+  // Determines if a user should be able to filter or search in the table
+  const hasData = data && data.software.length > 0;
+  const hasQuery = searchQuery !== "";
+  const vulnFilterDetails = getVulnFilterRenderDetails(vulnFilters);
+  const hasVulnFilters = vulnFilterDetails.filterCount > 0;
+
+  // Truly empty: no software at all, no active search/filters
+  const isTrulyEmpty = isSoftwareNotDetected && !hasVulnFilters;
+
+  const showFilterHeaders =
+    isTrulyEmpty || hasData || hasQuery || hasVulnFilters;
+
+  const memoizedSoftwareCount = useCallback(() => {
+    return <TableCount name="items" count={count} />;
+  }, [count]);
+
+  const onClickMyDeviceRow = useCallback(
+    (row: IHostSoftwareRowProps) => {
+      onShowInventoryVersions(row.original);
+    },
+    [onShowInventoryVersions]
+  );
+
+  const renderCustomFiltersButton = () => {
+    return (
+      <TooltipWrapper
+        className={`${baseClass}__filters`}
+        position="left"
+        underline={false}
+        showArrow
+        tipOffset={12}
+        tipContent={vulnFilterDetails.tooltipText}
+        disableTooltip={!hasVulnFilters}
+      >
+        <Button
+          variant="inverse"
+          onClick={onAddFiltersClick}
+          disabled={isTrulyEmpty}
+        >
+          <Icon name="filter" />
+          <span>{vulnFilterDetails.buttonText}</span>
+        </Button>
+      </TooltipWrapper>
+    );
+  };
+
+  return (
+    <div className={baseClass}>
+      <TableContainer
+        renderCount={memoizedSoftwareCount}
+        columnConfigs={tableConfig}
+        data={data?.software || []}
+        isLoading={isLoading}
+        defaultSortHeader={sortHeader}
+        defaultSortDirection={sortDirection}
+        defaultSearchQuery={searchQuery}
+        pageIndex={page}
+        disableNextPage={data?.meta.has_next_results === false}
+        pageSize={DEFAULT_PAGE_SIZE}
+        inputPlaceHolder="Search by name or vulnerability (CVE)"
+        onQueryChange={onQueryChange}
+        emptyComponent={() =>
+          isTrulyEmpty ? (
+            <EmptyState
+              header="No software found"
+              info="Expecting to see software? Check back later."
+            />
+          ) : (
+            <EmptyComponent
+              hasVulnFilters={hasVulnFilters}
+              platform={platform}
+              searchQuery={searchQuery}
+            />
+          )
+        }
+        customControl={
+          showFilterHeaders ? renderCustomFiltersButton : undefined
+        }
+        stackControls
+        showMarkAllPages={false}
+        isAllPagesSelected={false}
+        searchable={showFilterHeaders}
+        disableSearch={isTrulyEmpty}
+        manualSortBy
+        keyboardSelectableRows={isMyDevicePage}
+        // my device page row clickability
+        disableMultiRowSelect={isMyDevicePage}
+        onClickRow={isMyDevicePage ? onClickMyDeviceRow : undefined}
+      />
+    </div>
+  );
+};
+
+export default HostSoftwareTable;

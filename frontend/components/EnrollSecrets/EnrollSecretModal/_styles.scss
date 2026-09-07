@@ -1,0 +1,21 @@
+.enroll-secret-modal {
+  &__reveal-secret {
+    float: right;
+    text-decoration: none;
+  }
+
+  &__error {
+    color: $ui-error;
+  }
+
+  &__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .empty-table__container {
+    margin: $pad-large auto $pad-medium;
+    gap: $pad-medium;
+  }
+}

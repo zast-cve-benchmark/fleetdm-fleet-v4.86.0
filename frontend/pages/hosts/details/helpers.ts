@@ -1,0 +1,155 @@
+/** Helpers used across the host details and my device pages and components. */
+import {
+  HostMdmDeviceStatus,
+  HostMdmPendingAction,
+  RecoveryLockPasswordStatus,
+} from "interfaces/host";
+import {
+  IHostMdmProfile,
+  WindowsDiskEncryptionStatus,
+  MdmProfileStatus,
+  LinuxDiskEncryptionStatus,
+} from "interfaces/mdm";
+
+const convertWinDiskEncryptionStatusToSettingStatus = (
+  diskEncryptionStatus: WindowsDiskEncryptionStatus
+): MdmProfileStatus | "action_required" => {
+  return diskEncryptionStatus === "enforcing"
+    ? "pending"
+    : diskEncryptionStatus;
+};
+
+const generateWindowsDiskEncryptionMessage = (
+  status: WindowsDiskEncryptionStatus,
+  detail: string
+) => {
+  if (status === "failed") {
+    detail += ". Fleet will retry automatically.";
+  }
+  return detail;
+};
+
+/**
+ * Manually generates a setting for the windows disk encryption status. We need
+ * this as we don't have a windows disk encryption profile in the `profiles`
+ * attribute coming back from the GET /hosts/:id API response.
+ */
+export const generateWinDiskEncryptionSetting = (
+  diskEncryptionStatus: WindowsDiskEncryptionStatus,
+  detail: string
+): IHostMdmProfile => {
+  return {
+    profile_uuid: "0", // This is the only type of profile that can have this value
+    platform: "windows",
+    name: "Disk encryption",
+    status: convertWinDiskEncryptionStatusToSettingStatus(diskEncryptionStatus),
+    detail: generateWindowsDiskEncryptionMessage(diskEncryptionStatus, detail),
+    operation_type: null,
+    scope: null,
+    managed_local_account: null,
+  };
+};
+
+/**
+ * Manually generates a setting for the linux disk encryption status. We need
+ * this as we don't have a linux disk encryption setting in the `profiles`
+ * attribute coming back from the GET /hosts/:id API response.
+ */
+// eslint-disable-next-line import/prefer-default-export
+export const generateLinuxDiskEncryptionSetting = (
+  diskEncryptionStatus: LinuxDiskEncryptionStatus,
+  detail: string
+): IHostMdmProfile => {
+  return {
+    profile_uuid: "disk_enc_dummy",
+    platform: "linux",
+    name: "Disk encryption",
+    status: diskEncryptionStatus,
+    detail,
+    operation_type: null,
+    scope: null,
+    managed_local_account: null,
+  };
+};
+
+export const REC_LOCK_SYNTHETIC_PROFILE_UUID = "rec_lock_dummy";
+
+export const generateRecoveryLockPasswordSetting = (
+  status: RecoveryLockPasswordStatus,
+  detail: string
+): IHostMdmProfile => {
+  return {
+    profile_uuid: REC_LOCK_SYNTHETIC_PROFILE_UUID,
+    platform: "darwin",
+    name: "Recovery Lock password",
+    status,
+    detail,
+    operation_type: null,
+    scope: null,
+    managed_local_account: null,
+  };
+};
+
+export type HostMdmDeviceStatusUIState =
+  | "unlocked"
+  | "locked"
+  | "unlocking"
+  | "locking"
+  | "wiped"
+  | "wiping"
+  | "locating";
+
+// Exclude the empty string from HostPendingAction as that doesn't represent a
+// valid device status.
+const API_TO_UI_DEVICE_STATUS_MAP: Record<
+  HostMdmDeviceStatus | Exclude<HostMdmPendingAction, "">,
+  HostMdmDeviceStatusUIState
+> = {
+  unlocked: "unlocked",
+  locked: "locked",
+  unlock: "unlocking",
+  lock: "locking",
+  wiped: "wiped",
+  wipe: "wiping",
+  /** When device_status is "locked" and pending_action is "location", show "locating",
+   * device_status is "unlocked" and pending_action is "location" is still "locking"
+   */
+  location: "locating",
+};
+
+const deviceUpdatingStates = ["unlocking", "locking", "wiping"] as const;
+
+/**
+ * Gets the current UI state for the host device status. This helps us know what
+ * to display in the UI depending host device status or pending device actions.
+ *
+ * This approach was chosen to keep a seperation from the API data and the UI.
+ * This seperation helps protect us from changes to the API. It also allows
+ * us to calculate which UI state we are in at one place.
+ */
+export const getHostDeviceStatusUIState = (
+  deviceStatus: HostMdmDeviceStatus,
+  pendingAction: HostMdmPendingAction
+): HostMdmDeviceStatusUIState => {
+  if (pendingAction === "") {
+    return API_TO_UI_DEVICE_STATUS_MAP[deviceStatus];
+  }
+
+  // Special case: when pending_action is "location" and device_status is "unlocked",
+  // the device is in the process of locking in order to enable location tracking.
+  // Return "locking" in this case.
+  if (pendingAction === "location" && deviceStatus === "unlocked") {
+    return "locking";
+  }
+
+  return API_TO_UI_DEVICE_STATUS_MAP[pendingAction];
+};
+
+/**
+ * Checks if our device status UI state is in an updating state.
+ */
+export const isDeviceStatusUpdating = (
+  deviceStatus: HostMdmDeviceStatusUIState
+) => {
+  return deviceUpdatingStates.includes(deviceStatus as any);
+};

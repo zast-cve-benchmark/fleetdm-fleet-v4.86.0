@@ -1,0 +1,127 @@
+import React, { useContext } from "react";
+
+import { isEnrolledInMdm, MdmEnrollmentStatus } from "interfaces/mdm";
+import permissions from "utilities/permissions";
+import { AppContext } from "context/app";
+
+import ActionsDropdown from "components/ActionsDropdown";
+import { generateHostActionOptions } from "./helpers";
+import { HostMdmDeviceStatusUIState } from "../../helpers";
+
+const baseClass = "host-actions-dropdown";
+
+interface IHostActionsDropdownProps {
+  hostTeamId: number | null;
+  hostStatus: string;
+  hostMdmEnrollmentStatus: MdmEnrollmentStatus | null;
+  /** This represents the mdm managed host device status (e.g. unlocked, locked,
+   * unlocking, locking, ...etc) */
+  hostMdmDeviceStatus: HostMdmDeviceStatusUIState;
+  doesStoreEncryptionKey?: boolean;
+  isConnectedToFleetMdm?: boolean;
+  hostPlatform?: string;
+  hostCpuType?: string;
+  onSelect: (value: string) => void;
+  hostScriptsEnabled: boolean | null;
+  isRecoveryLockPasswordEnabled?: boolean;
+  diskEncryptionProfileStatus?: string;
+  recoveryLockPasswordAvailable?: boolean;
+  isManagedLocalAccountEnabled?: boolean;
+  managedAccountStatus?: string | null;
+  managedAccountPasswordAvailable?: boolean;
+}
+
+const HostActionsDropdown = ({
+  hostTeamId,
+  hostStatus,
+  hostMdmEnrollmentStatus,
+  hostMdmDeviceStatus,
+  doesStoreEncryptionKey,
+  isConnectedToFleetMdm,
+  hostPlatform = "",
+  hostCpuType = "",
+  hostScriptsEnabled = false,
+  onSelect,
+  isRecoveryLockPasswordEnabled = false,
+  diskEncryptionProfileStatus,
+  recoveryLockPasswordAvailable = false,
+  isManagedLocalAccountEnabled = false,
+  managedAccountStatus,
+  managedAccountPasswordAvailable = false,
+}: IHostActionsDropdownProps) => {
+  const {
+    isPremiumTier = false,
+    isGlobalAdmin = false,
+    isGlobalMaintainer = false,
+    isGlobalTechnician = false,
+    isMacMdmEnabledAndConfigured = false,
+    isWindowsMdmEnabledAndConfigured = false,
+    isAndroidMdmEnabledAndConfigured = false,
+    currentUser,
+    config: globalConfig,
+  } = useContext(AppContext);
+
+  if (!currentUser) return null;
+
+  const isTeamAdmin = permissions.isTeamAdmin(currentUser, hostTeamId);
+  const isTeamMaintainer = permissions.isTeamMaintainer(
+    currentUser,
+    hostTeamId
+  );
+  const isTeamTechnician = permissions.isTeamTechnician(
+    currentUser,
+    hostTeamId
+  );
+  const isTeamObserver = permissions.isTeamObserver(currentUser, hostTeamId);
+  const isGlobalObserver = permissions.isGlobalObserver(currentUser);
+
+  const options = generateHostActionOptions({
+    hostPlatform,
+    hostCpuType,
+    isPremiumTier,
+    isGlobalAdmin,
+    isGlobalMaintainer,
+    isGlobalObserver,
+    isGlobalTechnician,
+    isTeamAdmin,
+    isTeamMaintainer,
+    isTeamTechnician,
+    isTeamObserver,
+    isHostOnline: hostStatus === "online",
+    isEnrolledInMdm: isEnrolledInMdm(hostMdmEnrollmentStatus),
+    isConnectedToFleetMdm,
+    isMacMdmEnabledAndConfigured,
+    isWindowsMdmEnabledAndConfigured,
+    isAndroidMdmEnabledAndConfigured,
+    doesStoreEncryptionKey: doesStoreEncryptionKey ?? false,
+    hostMdmDeviceStatus,
+    hostScriptsEnabled,
+    scriptsGloballyDisabled: globalConfig?.server_settings.scripts_disabled,
+    isPrimoMode: globalConfig?.partnerships?.enable_primo ?? false,
+    hostMdmEnrollmentStatus,
+    isRecoveryLockPasswordEnabled,
+    diskEncryptionProfileStatus,
+    recoveryLockPasswordAvailable,
+    isManagedLocalAccountEnabled,
+    managedAccountStatus,
+    managedAccountPasswordAvailable,
+  });
+
+  // No options to render. Exit early
+  if (options.length === 0) return null;
+
+  return (
+    <div className={baseClass}>
+      <ActionsDropdown
+        className={`${baseClass}__host-actions-dropdown`}
+        onChange={onSelect}
+        placeholder="Actions"
+        options={options}
+        menuAlign="right"
+        variant="brand-button"
+      />
+    </div>
+  );
+};
+
+export default HostActionsDropdown;
